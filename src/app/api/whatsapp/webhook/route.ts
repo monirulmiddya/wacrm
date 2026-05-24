@@ -177,9 +177,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Process asynchronously so we can ack Meta within their timeout.
-  processWebhook(body).catch((error) => {
-    console.error('Error processing webhook:', error)
+  // Process after the response so Meta gets a fast 200 OK while Vercel
+  // keeps the invocation alive for the webhook work.
+  after(async () => {
+    try {
+      await processWebhook(body)
+    } catch (error) {
+      console.error('Error processing webhook:', error)
+    }
   })
 
   return NextResponse.json({ status: 'received' }, { status: 200 })
@@ -578,8 +583,8 @@ async function processMessage(
   // ============================================================
   // Flow runner dispatch.
   //
-  // Scheduled with `after()` instead of awaited so Meta gets a fast
-  // 200 OK, while the flow reply still starts immediately afterward.
+  // This runs inside the POST handler's `after()` work, so it does not
+  // block Meta's 200 OK but still sends the flow reply immediately.
   // ============================================================
   const flowInput = {
     userId,
@@ -602,36 +607,42 @@ async function processMessage(
 
   const inboundText = contentText ?? message.text?.body ?? ''
 
-  after(async () => {
-    const flowResult = await dispatchInboundToFlows(flowInput)
-    const flowConsumed = flowResult.consumed
-
-    const automationTriggers: (
-      | 'new_contact_created'
-      | 'first_inbound_message'
-      | 'new_message_received'
-      | 'keyword_match'
-    )[] = []
-
-    if (!flowConsumed) {
-      automationTriggers.push('new_message_received', 'keyword_match')
-    }
-    if (contactOutcome.wasCreated) {
-      automationTriggers.unshift('new_contact_created')
-    }
-    if (isFirstInboundMessage) {
-      automationTriggers.unshift('first_inbound_message')
-    }
-
-    await Promise.all(
-      automationTriggers.map((triggerType) =>
-        enqueueAutomationJob(userId, triggerType, contactRecord.id, {
-          message_text: inboundText,
-          conversation_id: conversation.id,
-        }),
-      ),
-    )
+  const flowResult = await dispatchInboundToFlows(flowInput)
+  const flowConsumed = flowResult.consumed
+  console.info('[webhook] flow dispatch result:', {
+    userId,
+    contactId: contactRecord.id,
+    conversationId: conversation.id,
+    consumed: flowConsumed,
+    outcome: flowResult.outcome,
+    flowRunId: flowResult.flow_run_id,
   })
+
+  const automationTriggers: (
+    | 'new_contact_created'
+    | 'first_inbound_message'
+    | 'new_message_received'
+    | 'keyword_match'
+  )[] = []
+
+  if (!flowConsumed) {
+    automationTriggers.push('new_message_received', 'keyword_match')
+  }
+  if (contactOutcome.wasCreated) {
+    automationTriggers.unshift('new_contact_created')
+  }
+  if (isFirstInboundMessage) {
+    automationTriggers.unshift('first_inbound_message')
+  }
+
+  await Promise.all(
+    automationTriggers.map((triggerType) =>
+      enqueueAutomationJob(userId, triggerType, contactRecord.id, {
+        message_text: inboundText,
+        conversation_id: conversation.id,
+      }),
+    ),
+  )
 
 }
 
