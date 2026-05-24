@@ -32,3 +32,4 @@ END $$;
 
 ALTER TABLE deals
   ADD CONSTRAINT deals_status_check CHECK (status IN ('open', 'won', 'lost'));
+

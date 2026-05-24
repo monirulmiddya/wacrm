@@ -33,3 +33,4 @@ REVOKE ALL ON FUNCTION increment_automation_execution_count(UUID) FROM PUBLIC;
 REVOKE ALL ON FUNCTION increment_automation_execution_count(UUID) FROM anon;
 REVOKE ALL ON FUNCTION increment_automation_execution_count(UUID) FROM authenticated;
 GRANT EXECUTE ON FUNCTION increment_automation_execution_count(UUID) TO service_role;
+

@@ -38,3 +38,4 @@ ALTER TABLE profiles
 -- No index needed: the column is read on the login codepath (one row
 -- lookup by primary key / user_id, both already indexed) and very
 -- rarely written.
+

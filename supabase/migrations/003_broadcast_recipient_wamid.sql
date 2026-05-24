@@ -82,3 +82,4 @@ DROP TRIGGER IF EXISTS broadcast_recipients_aggregate ON broadcast_recipients;
 CREATE TRIGGER broadcast_recipients_aggregate
 AFTER INSERT OR UPDATE OR DELETE ON broadcast_recipients
 FOR EACH ROW EXECUTE FUNCTION public.broadcast_recipient_aggregate_trigger();
+

@@ -127,3 +127,4 @@ BEGIN
   WHERE b.id = bid;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+

@@ -12,7 +12,7 @@
 -- AUTOMATIONS
 -- ============================================================
 CREATE TABLE IF NOT EXISTS automations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT,
@@ -51,7 +51,7 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON automations
 --                    'yes' or 'no' identifying which path.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS automation_steps (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   automation_id UUID NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
   parent_step_id UUID REFERENCES automation_steps(id) ON DELETE CASCADE,
   branch TEXT CHECK (branch IN ('yes', 'no')),
@@ -85,7 +85,7 @@ CREATE POLICY "Users can manage steps of own automations" ON automation_steps FO
 -- on broadcast_recipients / deals).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS automation_logs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   automation_id UUID NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
@@ -117,7 +117,7 @@ CREATE POLICY "Users can view own automation logs" ON automation_logs FOR ALL
 -- the engine uses the service-role client. No user policy exposed.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS automation_pending_executions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   automation_id UUID NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
@@ -138,3 +138,4 @@ CREATE INDEX IF NOT EXISTS idx_automation_pending_due
 ALTER TABLE automation_pending_executions ENABLE ROW LEVEL SECURITY;
 -- No SELECT/INSERT/UPDATE/DELETE policy for authenticated users — all
 -- access is server-side via the service-role key.
+

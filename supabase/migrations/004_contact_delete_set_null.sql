@@ -63,3 +63,4 @@ ALTER TABLE deals
   ADD CONSTRAINT deals_contact_id_fkey
     FOREIGN KEY (contact_id) REFERENCES contacts(id)
     ON DELETE SET NULL;
+
