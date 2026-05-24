@@ -4,8 +4,8 @@ import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
-import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import { enqueueAutomationJob } from '@/lib/background-jobs/queue'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -638,18 +638,18 @@ async function processMessage(
   // manually-imported contacts sending for the first time. We dispatch both
   // so users can pick whichever semantic they want; an automation that
   // listens to only one trigger runs only when that trigger matches.
+  //
+  // Automations are now queued for async processing instead of running
+  // synchronously. This prevents the webhook from timing out on Vercel's
+  // free tier (10s limit) when multiple automations or Meta API calls
+  // are involved. A cron endpoint processes the queue on a schedule.
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
   if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
   for (const triggerType of automationTriggers) {
-    runAutomationsForTrigger({
-      userId,
-      triggerType,
-      contactId: contactRecord.id,
-      context: {
-        message_text: inboundText,
-        conversation_id: conversation.id,
-      },
-    }).catch((err) => console.error('[automations] dispatch failed:', err))
+    enqueueAutomationJob(userId, triggerType, contactRecord.id, {
+      message_text: inboundText,
+      conversation_id: conversation.id,
+    }).catch((err) => console.error('[queue] enqueue automation failed:', err))
   }
 }
 

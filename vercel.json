@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/jobs/process",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/automations/cron",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/flows/cron",
+      "schedule": "*/2 * * * *"
+    }
+  ]
+}
