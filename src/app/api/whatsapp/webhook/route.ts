@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
@@ -578,79 +578,61 @@ async function processMessage(
   // ============================================================
   // Flow runner dispatch.
   //
-  // If the runner consumes the message (it either advanced an active
-  // run or started a new one), we suppress the `new_message_received`
-  // + `keyword_match` automation triggers for this inbound. Customer
-  // is navigating the bot menu, not sending a fresh trigger word
-  // that should fork into automations.
-  //
-  // The relationship-level triggers (`new_contact_created`,
-  // `first_inbound_message`) still fire even when consumed — those
-  // are about WHO is messaging, not what they said.
-  //
-  // Awaited (not fire-and-forget) because we need the `consumed`
-  // result before deciding whether to dispatch automations. The
-  // runner has its own try/catch and never throws. Accounts with
-  // no active flows take the runner's early-exit "no_match" path
-  // basically for free (one indexed SELECT for the active run).
+  // Scheduled with `after()` instead of awaited so Meta gets a fast
+  // 200 OK, while the flow reply still starts immediately afterward.
   // ============================================================
-  const flowResult = await dispatchInboundToFlows({
+  const flowInput = {
     userId,
     contactId: contactRecord.id,
     conversationId: conversation.id,
-    message:
-      interactiveReplyId
-        ? {
-            kind: 'interactive_reply',
-            reply_id: interactiveReplyId,
-            reply_title: contentText ?? '',
-            meta_message_id: message.id,
-          }
-        : {
-            kind: 'text',
-            text: contentText ?? message.text?.body ?? '',
-            meta_message_id: message.id,
-          },
+    message: interactiveReplyId
+      ? {
+          kind: 'interactive_reply' as const,
+          reply_id: interactiveReplyId,
+          reply_title: contentText ?? '',
+          meta_message_id: message.id,
+        }
+      : {
+          kind: 'text' as const,
+          text: contentText ?? message.text?.body ?? '',
+          meta_message_id: message.id,
+        },
     isFirstInboundMessage,
-  })
-  const flowConsumed = flowResult.consumed
+  }
 
-  // Fire any automations that react to this webhook event. All dispatches
-  // run here (not earlier) so the contact, conversation, and inbound
-  // message all exist before any step — including send_message — runs.
-  // Fire-and-forget: a slow or failing automation must not block the
-  // webhook's 200 OK response to Meta.
   const inboundText = contentText ?? message.text?.body ?? ''
-  const automationTriggers: (
-    | 'new_contact_created'
-    | 'first_inbound_message'
-    | 'new_message_received'
-    | 'keyword_match'
-  )[] = []
-  // Content-level triggers are suppressed when a flow consumed the
-  // message — see the comment block above.
-  if (!flowConsumed) {
-    automationTriggers.push('new_message_received', 'keyword_match')
-  }
-  // new_contact_created fires only when the webhook just auto-created the
-  // contact row. first_inbound_message fires whenever this is the contact's
-  // first-ever customer-sent message — a superset that also catches
-  // manually-imported contacts sending for the first time. We dispatch both
-  // so users can pick whichever semantic they want; an automation that
-  // listens to only one trigger runs only when that trigger matches.
-  //
-  // Automations are now queued for async processing instead of running
-  // synchronously. This prevents the webhook from timing out on Vercel's
-  // free tier (10s limit) when multiple automations or Meta API calls
-  // are involved. A cron endpoint processes the queue on a schedule.
-  if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
-  if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
-  for (const triggerType of automationTriggers) {
-    enqueueAutomationJob(userId, triggerType, contactRecord.id, {
-      message_text: inboundText,
-      conversation_id: conversation.id,
-    }).catch((err) => console.error('[queue] enqueue automation failed:', err))
-  }
+
+  after(async () => {
+    const flowResult = await dispatchInboundToFlows(flowInput)
+    const flowConsumed = flowResult.consumed
+
+    const automationTriggers: (
+      | 'new_contact_created'
+      | 'first_inbound_message'
+      | 'new_message_received'
+      | 'keyword_match'
+    )[] = []
+
+    if (!flowConsumed) {
+      automationTriggers.push('new_message_received', 'keyword_match')
+    }
+    if (contactOutcome.wasCreated) {
+      automationTriggers.unshift('new_contact_created')
+    }
+    if (isFirstInboundMessage) {
+      automationTriggers.unshift('first_inbound_message')
+    }
+
+    await Promise.all(
+      automationTriggers.map((triggerType) =>
+        enqueueAutomationJob(userId, triggerType, contactRecord.id, {
+          message_text: inboundText,
+          conversation_id: conversation.id,
+        }),
+      ),
+    )
+  })
+
 }
 
 async function parseMessageContent(

@@ -1,6 +1,6 @@
 # Background Job Queue Setup
 
-This document explains how to set up and configure the background job queue system for automations and flows.
+This document explains how to set up and configure the background job queue system for automations. Flow dispatch runs after the webhook response with Next.js `after()`, so Meta gets a fast ACK without waiting for the next cron tick.
 
 ## Why This Exists
 
@@ -17,12 +17,12 @@ Vercel's free tier serverless functions have a **10-second timeout**. Without th
 Webhook Request
     ↓
 1. Store inbound message
-2. Enqueue automation/flow jobs
+2. Schedule flow work after the response and enqueue automation jobs
 3. Return 200 OK (fast!)
     ↓
 Cron Job (runs every 5-10 mins)
     ↓
-Process pending background_jobs
+Process pending automation background_jobs
     ↓
 Execute automations (send messages, wait steps, etc.)
 ```
@@ -32,11 +32,8 @@ Execute automations (send messages, wait steps, etc.)
 Add these to your `.env.local` (development) or Vercel deployment settings (production):
 
 ```bash
-# Required: Secret for the background jobs cron endpoint
-BACKGROUND_JOBS_CRON_SECRET=your-secure-random-string
-
-# Optional: existing automation cron secret (for wait-step resumptions)
-AUTOMATION_CRON_SECRET=your-other-secure-random-string
+# Shared secret for all cron endpoints
+AUTOMATION_CRON_SECRET=your-secure-random-string
 ```
 
 Generate secure secrets:
@@ -51,7 +48,7 @@ Two separate cron jobs are now needed:
 ### 1. Background Jobs Processor (NEW - for this PR)
 **Endpoint:** `GET /api/jobs/process`  
 **Frequency:** Every 5 minutes  
-**Header:** `x-cron-secret: <BACKGROUND_JOBS_CRON_SECRET>`
+**Header:** `x-cron-secret: <AUTOMATION_CRON_SECRET>`
 
 **Vercel cron.json:**
 ```json
@@ -144,7 +141,7 @@ If a job is claimed but never completes:
   ```
 
 ### No jobs being processed
-- Check `BACKGROUND_JOBS_CRON_SECRET` matches webhook request
+- Check `AUTOMATION_CRON_SECRET` matches webhook request
 - Verify cron endpoint is being called (check application logs)
 - Ensure database migration has been applied
 
