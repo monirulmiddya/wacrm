@@ -7,6 +7,8 @@ import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { enqueueAutomationJob } from '@/lib/background-jobs/queue'
 
+export const maxDuration = 60
+
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _adminClient: any = null
